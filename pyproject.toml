@@ -1,0 +1,83 @@
+[project]
+name = "sequence-classifier"
+description = ""
+authors = [
+    {name = "Yasufumi Taniguchi", email = "yasufumi.taniguchi@gmail.com"},
+]
+dependencies = [
+    "torch>=2.1.0",
+]
+requires-python = ">=3.8,<3.12"
+readme = {"file" = "README.md", "content-type" = "text/markdown"}
+license = {text = "MIT"}
+classifiers = [
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dynamic = ["version"]
+
+[project.optional-dependencies]
+ci = [
+    "pytest>=7.4.3",
+    "pytest-cov>=4.1.0",
+    "mypy>=1.6.1",
+    "ruff>=0.1.3",
+    "black>=23.10.1",
+]
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sequence_classifier"]
+
+[tool.hatch.version]
+path = "src/sequence_classifier/__about__.py"
+
+[tool.black]
+line-length = 88
+
+[tool.ruff]
+src = ["src"]
+line-length = 88
+select = [
+  "E",  # pycodestyle errors
+  "W",  # pycodestyle warnings
+  "F",  # pyflakes
+  "I",  # isort
+  "C4",  # flake8-comprehensions
+  "B",  # flake8-bugbear
+  "TCH",  # flake8-type-checking
+  "TID",  # flake8-tidy-imports
+  "SIM", # flake8-simplify
+  "Q", # flake8-quotes
+  "PIE", # flake8-pie
+  "UP",  # pyupgrade
+  "PT",  # flake8-pytest-style
+  "C90",  # mccabe
+]
+
+[tool.ruff.mccabe]
+max-complexity = 18
+
+[tool.ruff.isort]
+split-on-trailing-comma = false
+
+[tool.ruff.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.flake8-type-checking]
+strict = true
+
+[tool.mypy]
+files = ["src", "tests"]
+strict = true
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpath = ["tests"]
+addopts = "--cov=sequence_classifier --cov-report=term-missing -vv"
