@@ -76,6 +76,7 @@ strict = true
 [tool.mypy]
 files = ["src", "tests"]
 strict = true
+pretty = true
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
