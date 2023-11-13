@@ -30,7 +30,7 @@ class UnitLogPartitions(BaseLogPartitions):
 
     @property
     def marginals(self) -> torch.Tensor:
-        return torch.log_softmax(self.__logits, dim=-1).exp()
+        return torch.softmax(self.__logits, dim=-1)
 
 
 class LogPartitions(BaseLogPartitions):
