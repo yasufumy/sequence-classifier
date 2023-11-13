@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABCMeta, abstractmethod
-from typing import Final
+from typing import Final, cast
 
 import torch
 
@@ -33,7 +33,7 @@ class Semiring(metaclass=ABCMeta):
 
     @staticmethod
     def mul(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-        return x + y
+        return cast(torch.Tensor, x + y)
 
     @classmethod
     def bmm(cls, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
@@ -80,4 +80,4 @@ def reduce(semiring: type[Semiring], potentials: torch.Tensor) -> torch.Tensor:
     for _ in range(n):
         potentials = semiring.bmm(potentials[:, 0::2], potentials[:, 1::2])
 
-    return potentials.squeeze(dim=1)
+    return cast(torch.Tensor, potentials.squeeze(dim=1))

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from abc import ABCMeta, abstractmethod
+from typing import cast
 
 import torch
 from torch import nn
 
-from sequence_classifier.crf.semiring import LogSemiring, MaxSemiring, Semiring, reduce
+from sequence_classifier.semiring import LogSemiring, MaxSemiring, Semiring, reduce
 
 
 class BaseLogPartitions(metaclass=ABCMeta):
@@ -26,11 +27,13 @@ class UnitLogPartitions(BaseLogPartitions):
 
     @property
     def value(self) -> torch.Tensor:
-        return LogSemiring.sum(self.__logits, dim=-1).squeeze(dim=-1)
+        return cast(
+            torch.Tensor, LogSemiring.sum(self.__logits, dim=-1).squeeze(dim=-1)
+        )
 
     @property
     def marginals(self) -> torch.Tensor:
-        return torch.log_softmax(self.__logits, dim=-1).exp()
+        return torch.softmax(self.__logits, dim=-1)
 
 
 class LogPartitions(BaseLogPartitions):
@@ -57,19 +60,24 @@ class LogPartitions(BaseLogPartitions):
             (self.__start_potentials, self.__potentials),
             create_graph=True,
         )
-        return (
+        return cast(
+            torch.Tensor,
             torch.cat([start[:, None, :], marginals.sum(dim=-1)], dim=1)
-            * self.__mask[..., None]
+            * self.__mask[..., None],
         )
 
 
 class BaseCrfDistribution(metaclass=ABCMeta):
     def log_likelihood(self, tag_indices: torch.Tensor) -> torch.Tensor:
-        return self.log_scores(tag_indices=tag_indices) - self.log_partitions.value
+        return cast(
+            torch.Tensor,
+            self.log_scores(tag_indices=tag_indices) - self.log_partitions.value,
+        )
 
     def marginal_log_likelihood(self, tag_bitmap: torch.Tensor) -> torch.Tensor:
-        return (
-            self.log_multitag_scores(tag_bitmap=tag_bitmap) - self.log_partitions.value
+        return cast(
+            torch.Tensor,
+            self.log_multitag_scores(tag_bitmap=tag_bitmap) - self.log_partitions.value,
         )
 
     @property
@@ -105,15 +113,16 @@ class CrfUnitDistribution(BaseCrfDistribution):
         self.__logits = logits
 
     def log_scores(self, tag_indices: torch.Tensor) -> torch.Tensor:
-        return (
+        return cast(
+            torch.Tensor,
             self.__logits.squeeze(dim=1)
             .gather(dim=-1, index=tag_indices)
-            .squeeze(dim=-1)
+            .squeeze(dim=-1),
         )
 
     def log_multitag_scores(self, tag_bitmap: torch.Tensor) -> torch.Tensor:
         logits = self.__logits.masked_fill(~tag_bitmap, Semiring.zero)
-        return LogSemiring.sum(logits, dim=-1).squeeze(dim=-1)
+        return cast(torch.Tensor, LogSemiring.sum(logits, dim=-1).squeeze(dim=-1))
 
     @property
     def log_partitions(self) -> UnitLogPartitions:
@@ -121,7 +130,9 @@ class CrfUnitDistribution(BaseCrfDistribution):
 
     @property
     def max(self) -> torch.Tensor:
-        return MaxSemiring.sum(self.__logits, dim=-1).squeeze(dim=-1)
+        return cast(
+            torch.Tensor, MaxSemiring.sum(self.__logits, dim=-1).squeeze(dim=-1)
+        )
 
     @property
     def argmax(self) -> torch.Tensor:
@@ -155,7 +166,7 @@ class CrfDistribution(BaseCrfDistribution):
             .squeeze(dim=(-1, -2))
             * self.__mask[:, 1:]
         ).sum(dim=-1)
-        return log_scores
+        return cast(torch.Tensor, log_scores)
 
     def log_multitag_scores(self, tag_bitmap: torch.Tensor) -> torch.Tensor:
         # Make sure to deactivate masked indices
@@ -232,14 +243,20 @@ class Crf(nn.Module):
 
         # Apply constrains
         if start_constraints is not None:
-            logits[:, 0].masked_fill_(start_constraints, Semiring.zero)
+            start_logits = logits[:, 0].masked_fill(start_constraints, Semiring.zero)
+            logits = logits.select_scatter(src=start_logits, dim=1, index=0)
 
         if end_constraints is not None:
             batch_indices = torch.arange(batch_size, device=logits.device)
             end_indices = mask.sum(dim=-1) - 1
-            logits[batch_indices, end_indices] = logits[
-                batch_indices, end_indices
-            ].masked_fill(end_constraints, Semiring.zero)
+            end_logits = logits[batch_indices, end_indices].masked_fill(
+                end_constraints, Semiring.zero
+            )
+            logits = logits.scatter(
+                dim=1,
+                index=end_indices[:, None, None].expand(-1, -1, num_tags),
+                src=end_logits[:, None, :],
+            )
 
         if sequence_length == 1:
             return CrfUnitDistribution(logits=logits)
