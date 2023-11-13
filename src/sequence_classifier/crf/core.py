@@ -232,14 +232,20 @@ class Crf(nn.Module):
 
         # Apply constrains
         if start_constraints is not None:
-            logits[:, 0].masked_fill_(start_constraints, Semiring.zero)
+            start_logits = logits[:, 0].masked_fill(start_constraints, Semiring.zero)
+            logits = logits.select_scatter(src=start_logits, dim=1, index=0)
 
         if end_constraints is not None:
             batch_indices = torch.arange(batch_size, device=logits.device)
             end_indices = mask.sum(dim=-1) - 1
-            logits[batch_indices, end_indices] = logits[
-                batch_indices, end_indices
-            ].masked_fill(end_constraints, Semiring.zero)
+            end_logits = logits[batch_indices, end_indices].masked_fill(
+                end_constraints, Semiring.zero
+            )
+            logits = logits.scatter(
+                dim=1,
+                index=end_indices[:, None, None].expand(-1, -1, num_tags),
+                src=end_logits[:, None, :],
+            )
 
         if sequence_length == 1:
             return CrfUnitDistribution(logits=logits)
