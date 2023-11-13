@@ -5,7 +5,7 @@ from abc import ABCMeta, abstractmethod
 import torch
 from torch import nn
 
-from sequence_classifier.crf.semiring import LogSemiring, MaxSemiring, Semiring, reduce
+from sequence_classifier.semiring import LogSemiring, MaxSemiring, Semiring, reduce
 
 
 class BaseLogPartitions(metaclass=ABCMeta):
