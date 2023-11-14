@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABCMeta, abstractmethod
-from typing import cast
+from typing import cast, final
 
 import torch
 from torch import nn
@@ -91,12 +91,14 @@ class LogPartitions(BaseLogPartitions):
 
 
 class BaseCrfDistribution(metaclass=ABCMeta):
+    @final
     def log_likelihood(self, tag_indices: torch.Tensor) -> torch.Tensor:
         return cast(
             torch.Tensor,
             self.log_scores(tag_indices=tag_indices) - self.log_partitions.value,
         )
 
+    @final
     def marginal_log_likelihood(self, tag_bitmap: torch.Tensor) -> torch.Tensor:
         return cast(
             torch.Tensor,
