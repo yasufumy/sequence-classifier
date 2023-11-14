@@ -150,10 +150,6 @@ class CrfDistribution(BaseCrfDistribution):
         self.__potentials = potentials
         self.__mask = mask
 
-        self.__batch_size = potentials.size(0)
-        self.__sequence_length = potentials.size(1)
-        self.__num_tags = potentials.size(2)
-
     def log_scores(self, tag_indices: torch.Tensor) -> torch.Tensor:
         log_scores = self.__start_potentials.gather(
             index=tag_indices[:, [0]], dim=-1
