@@ -6,7 +6,30 @@ from typing import cast
 import torch
 from torch import nn
 
-from sequence_classifier.semiring import LogSemiring, MaxSemiring, Semiring, reduce
+from sequence_classifier.semiring import LogSemiring, MaxSemiring, Semiring
+
+
+def reduce(semiring: type[Semiring], potentials: torch.Tensor) -> torch.Tensor:
+    batch_size, sequence_length, num_tags, _ = potentials.size()
+
+    n = sequence_length.bit_length()
+    padding_length = (1 << n) - sequence_length
+    padding_value = semiring.eye(
+        n=num_tags, dtype=potentials.dtype, device=potentials.device
+    )[None, None]
+
+    potentials = torch.cat(
+        (
+            potentials,
+            padding_value.repeat(batch_size, padding_length, 1, 1),
+        ),
+        dim=1,
+    )
+
+    for _ in range(n):
+        potentials = semiring.bmm(potentials[:, 0::2], potentials[:, 1::2])
+
+    return cast(torch.Tensor, potentials.squeeze(dim=1))
 
 
 class BaseLogPartitions(metaclass=ABCMeta):
