@@ -194,23 +194,18 @@ class CrfDistribution(BaseCrfDistribution):
         mask |= (~self.__mask)[:, 1:, None, None]
         potentials = self.__potentials * mask + Semiring.zero * ~mask
         # Same as log_partitions
-        transitions = reduce(semiring=LogSemiring, potentials=potentials)
         start_potentials = self.__start_potentials.masked_fill(
             ~tag_bitmap[:, 0], Semiring.zero
         )
-        transitions = transitions + start_potentials[..., None]
-        return LogSemiring.sum(LogSemiring.sum(transitions, dim=-1), dim=-1)
+        return LogPartitions(
+            start_potentials=start_potentials, potentials=potentials, mask=mask
+        ).value
 
     @property
     def log_partitions(self) -> LogPartitions:
-        transitions = reduce(semiring=LogSemiring, potentials=self.__potentials)
-        transitions = transitions + self.__start_potentials[..., None]
         return LogPartitions(
             start_potentials=self.__start_potentials,
             potentials=self.__potentials,
-            log_partitions=LogSemiring.sum(
-                LogSemiring.sum(transitions, dim=-1), dim=-1
-            ),
             mask=self.__mask,
         )
 
