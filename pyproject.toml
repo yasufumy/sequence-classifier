@@ -80,6 +80,14 @@ files = ["src", "tests"]
 strict = true
 pretty = true
 
+[[tool.mypy.overrides]]
+module = ["torch_struct.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["torch.testing.*"]
+no_implicit_reexport= false
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpath = ["tests"]
