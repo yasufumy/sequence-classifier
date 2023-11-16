@@ -125,7 +125,7 @@ class BaseCrfDistribution(metaclass=ABCMeta):
 
     @property
     @abstractmethod
-    def argmax(self, max_scores: torch.Tensor | None = None) -> torch.Tensor:
+    def argmax(self) -> torch.Tensor:
         raise NotImplementedError()
 
 
