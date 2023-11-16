@@ -40,7 +40,7 @@ class BaseLogPartitions(metaclass=ABCMeta):
 
     @property
     @abstractmethod
-    def marginals(self) -> torch.Tensor:
+    def marginals(self) -> torch.Tensor | None:
         raise NotImplementedError()
 
 
@@ -55,8 +55,8 @@ class UnitLogPartitions(BaseLogPartitions):
         )
 
     @property
-    def marginals(self) -> torch.Tensor:
-        return torch.softmax(self.__logits, dim=-1)
+    def marginals(self) -> torch.Tensor | None:
+        return None
 
 
 class LogPartitions(BaseLogPartitions):
@@ -64,10 +64,12 @@ class LogPartitions(BaseLogPartitions):
         self,
         start_potentials: torch.Tensor,
         potentials: torch.Tensor,
-        log_partitions: torch.Tensor,
         mask: torch.Tensor,
     ):
-        self.__start_potentials = start_potentials
+        transitions = reduce(semiring=LogSemiring, potentials=potentials)
+        transitions = transitions + start_potentials[..., None]
+        log_partitions = LogSemiring.sum(LogSemiring.sum(transitions, dim=-1), dim=-1)
+
         self.__potentials = potentials
         self.__log_partitions = log_partitions
         self.__mask = mask
@@ -77,17 +79,11 @@ class LogPartitions(BaseLogPartitions):
         return self.__log_partitions
 
     @property
-    def marginals(self) -> torch.Tensor:
-        (start, marginals) = torch.autograd.grad(
-            self.__log_partitions.sum(),
-            (self.__start_potentials, self.__potentials),
-            create_graph=True,
+    def marginals(self) -> torch.Tensor | None:
+        (marginals,) = torch.autograd.grad(
+            self.__log_partitions.sum(), self.__potentials, create_graph=True
         )
-        return cast(
-            torch.Tensor,
-            torch.cat([start[:, None, :], marginals.sum(dim=-1)], dim=1)
-            * self.__mask[..., None],
-        )
+        return cast(torch.Tensor, marginals * self.__mask[:, 1:, None, None])
 
 
 class BaseCrfDistribution(metaclass=ABCMeta):
@@ -106,7 +102,7 @@ class BaseCrfDistribution(metaclass=ABCMeta):
         )
 
     @property
-    def marginals(self) -> torch.Tensor:
+    def marginals(self) -> torch.Tensor | None:
         return self.log_partitions.marginals
 
     @abstractmethod
