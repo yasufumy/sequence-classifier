@@ -28,6 +28,7 @@ ci = [
     "black>=23.10.1",
     "sequence-label>=0.1.6",
     "hypothesis>=6.88.4",
+    "torch-struct>=0.5",
 ]
 [build-system]
 requires = ["hatchling"]
