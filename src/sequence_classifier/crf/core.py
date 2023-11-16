@@ -1,12 +1,35 @@
 from __future__ import annotations
 
 from abc import ABCMeta, abstractmethod
-from typing import cast
+from typing import cast, final
 
 import torch
 from torch import nn
 
-from sequence_classifier.semiring import LogSemiring, MaxSemiring, Semiring, reduce
+from sequence_classifier.semiring import LogSemiring, MaxSemiring, Semiring
+
+
+def reduce(semiring: type[Semiring], potentials: torch.Tensor) -> torch.Tensor:
+    batch_size, sequence_length, num_tags, _ = potentials.size()
+
+    n = sequence_length.bit_length()
+    padding_length = (1 << n) - sequence_length
+    padding_value = semiring.eye(
+        n=num_tags, dtype=potentials.dtype, device=potentials.device
+    )[None, None]
+
+    potentials = torch.cat(
+        (
+            potentials,
+            padding_value.repeat(batch_size, padding_length, 1, 1),
+        ),
+        dim=1,
+    )
+
+    for _ in range(n):
+        potentials = semiring.bmm(potentials[:, 0::2], potentials[:, 1::2])
+
+    return cast(torch.Tensor, potentials.squeeze(dim=1))
 
 
 class BaseLogPartitions(metaclass=ABCMeta):
@@ -17,7 +40,7 @@ class BaseLogPartitions(metaclass=ABCMeta):
 
     @property
     @abstractmethod
-    def marginals(self) -> torch.Tensor:
+    def marginals(self) -> torch.Tensor | None:
         raise NotImplementedError()
 
 
@@ -32,8 +55,8 @@ class UnitLogPartitions(BaseLogPartitions):
         )
 
     @property
-    def marginals(self) -> torch.Tensor:
-        return torch.softmax(self.__logits, dim=-1)
+    def marginals(self) -> torch.Tensor | None:
+        return None
 
 
 class LogPartitions(BaseLogPartitions):
@@ -41,10 +64,12 @@ class LogPartitions(BaseLogPartitions):
         self,
         start_potentials: torch.Tensor,
         potentials: torch.Tensor,
-        log_partitions: torch.Tensor,
         mask: torch.Tensor,
     ):
-        self.__start_potentials = start_potentials
+        transitions = reduce(semiring=LogSemiring, potentials=potentials)
+        transitions = transitions + start_potentials[..., None]
+        log_partitions = LogSemiring.sum(LogSemiring.sum(transitions, dim=-1), dim=-1)
+
         self.__potentials = potentials
         self.__log_partitions = log_partitions
         self.__mask = mask
@@ -54,26 +79,22 @@ class LogPartitions(BaseLogPartitions):
         return self.__log_partitions
 
     @property
-    def marginals(self) -> torch.Tensor:
-        (start, marginals) = torch.autograd.grad(
-            self.__log_partitions.sum(),
-            (self.__start_potentials, self.__potentials),
-            create_graph=True,
+    def marginals(self) -> torch.Tensor | None:
+        (marginals,) = torch.autograd.grad(
+            self.__log_partitions.sum(), self.__potentials, create_graph=True
         )
-        return cast(
-            torch.Tensor,
-            torch.cat([start[:, None, :], marginals.sum(dim=-1)], dim=1)
-            * self.__mask[..., None],
-        )
+        return cast(torch.Tensor, marginals * self.__mask[:, 1:, None, None])
 
 
 class BaseCrfDistribution(metaclass=ABCMeta):
+    @final
     def log_likelihood(self, tag_indices: torch.Tensor) -> torch.Tensor:
         return cast(
             torch.Tensor,
             self.log_scores(tag_indices=tag_indices) - self.log_partitions.value,
         )
 
+    @final
     def marginal_log_likelihood(self, tag_bitmap: torch.Tensor) -> torch.Tensor:
         return cast(
             torch.Tensor,
@@ -81,7 +102,7 @@ class BaseCrfDistribution(metaclass=ABCMeta):
         )
 
     @property
-    def marginals(self) -> torch.Tensor:
+    def marginals(self) -> torch.Tensor | None:
         return self.log_partitions.marginals
 
     @abstractmethod
@@ -104,7 +125,7 @@ class BaseCrfDistribution(metaclass=ABCMeta):
 
     @property
     @abstractmethod
-    def argmax(self, max_scores: torch.Tensor | None = None) -> torch.Tensor:
+    def argmax(self) -> torch.Tensor:
         raise NotImplementedError()
 
 
@@ -150,10 +171,6 @@ class CrfDistribution(BaseCrfDistribution):
         self.__potentials = potentials
         self.__mask = mask
 
-        self.__batch_size = potentials.size(0)
-        self.__sequence_length = potentials.size(1)
-        self.__num_tags = potentials.size(2)
-
     def log_scores(self, tag_indices: torch.Tensor) -> torch.Tensor:
         log_scores = self.__start_potentials.gather(
             index=tag_indices[:, [0]], dim=-1
@@ -177,23 +194,18 @@ class CrfDistribution(BaseCrfDistribution):
         mask |= (~self.__mask)[:, 1:, None, None]
         potentials = self.__potentials * mask + Semiring.zero * ~mask
         # Same as log_partitions
-        transitions = reduce(semiring=LogSemiring, potentials=potentials)
         start_potentials = self.__start_potentials.masked_fill(
             ~tag_bitmap[:, 0], Semiring.zero
         )
-        transitions = transitions + start_potentials[..., None]
-        return LogSemiring.sum(LogSemiring.sum(transitions, dim=-1), dim=-1)
+        return LogPartitions(
+            start_potentials=start_potentials, potentials=potentials, mask=mask
+        ).value
 
     @property
     def log_partitions(self) -> LogPartitions:
-        transitions = reduce(semiring=LogSemiring, potentials=self.__potentials)
-        transitions = transitions + self.__start_potentials[..., None]
         return LogPartitions(
             start_potentials=self.__start_potentials,
             potentials=self.__potentials,
-            log_partitions=LogSemiring.sum(
-                LogSemiring.sum(transitions, dim=-1), dim=-1
-            ),
             mask=self.__mask,
         )
 
