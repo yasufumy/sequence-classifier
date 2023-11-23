@@ -29,6 +29,12 @@ ci = [
     "sequence-label>=0.1.6",
     "hypothesis>=6.88.4",
     "torch-struct>=0.5",
+    "pytorch-crf>=0.7.2",
+]
+dev = [
+    "ipdb>=0.13.13",
+    "pdbpp>=0.10.3",
+    "ipython>=8.12.3",
 ]
 [build-system]
 requires = ["hatchling"]
@@ -81,7 +87,10 @@ strict = true
 pretty = true
 
 [[tool.mypy.overrides]]
-module = ["torch_struct.*"]
+module = [
+    "torch_struct.*",
+    "torchcrf.*",
+]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

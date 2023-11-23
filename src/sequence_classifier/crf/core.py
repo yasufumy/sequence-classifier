@@ -166,10 +166,12 @@ class CrfDistribution(BaseCrfDistribution):
         start_potentials: torch.Tensor,
         potentials: torch.Tensor,
         mask: torch.Tensor,
+        padding_index: int,
     ):
         self.__start_potentials = start_potentials
         self.__potentials = potentials
         self.__mask = mask
+        self.__padding_index = padding_index
 
     def log_scores(self, tag_indices: torch.Tensor) -> torch.Tensor:
         log_scores = self.__start_potentials.gather(
@@ -229,16 +231,42 @@ class CrfDistribution(BaseCrfDistribution):
 
         start = transition_sequence[:, 0].sum(dim=-1).argmax(dim=-1, keepdim=True)
 
-        return torch.cat([start, tag_indices], dim=-1)
+        return cast(
+            torch.Tensor,
+            torch.cat([start, tag_indices], dim=-1) * self.__mask
+            + (~self.__mask) * self.__padding_index,
+        )
 
 
 class Crf(nn.Module):
-    def __init__(self, num_tags: int) -> None:
+    def __init__(
+        self,
+        num_tags: int,
+        include_start: bool = False,
+        include_end: bool = False,
+        padding_index: int = -1,
+    ) -> None:
         super().__init__()
 
         self.transitions = nn.Parameter(torch.empty(num_tags, num_tags))
-
         nn.init.xavier_normal_(self.transitions)
+
+        self.start_states: torch.Tensor | None
+        self.end_states: torch.Tensor | None
+
+        if include_start:
+            self.start_states = nn.Parameter(torch.empty(num_tags))
+            nn.init.normal_(self.start_states)
+        else:
+            self.start_states = None
+
+        if include_end:
+            self.end_states = nn.Parameter(torch.empty(num_tags))
+            nn.init.normal_(self.end_states)
+        else:
+            self.end_states = None
+
+        self.__padding_index = padding_index
 
     def forward(
         self,
@@ -252,15 +280,30 @@ class Crf(nn.Module):
             mask = logits.new_ones(logits.shape[:-1], dtype=torch.bool)
 
         batch_size, sequence_length, num_tags = logits.size()
+        end_indices = mask.sum(dim=-1) - 1
+
+        if self.start_states is not None:
+            logits = logits.select_scatter(
+                src=logits[:, 0] + self.start_states, dim=1, index=0
+            )
+
+        if self.end_states is not None:
+            logits = logits.scatter_add(
+                dim=1,
+                index=end_indices[:, None, None].expand(-1, -1, num_tags),
+                src=self.end_states[None, None, :].expand(batch_size, -1, -1),
+            )
 
         # Apply constrains
         if start_constraints is not None:
-            start_logits = logits[:, 0].masked_fill(start_constraints, Semiring.zero)
-            logits = logits.select_scatter(src=start_logits, dim=1, index=0)
+            logits = logits.select_scatter(
+                src=logits[:, 0].masked_fill(start_constraints, Semiring.zero),
+                dim=1,
+                index=0,
+            )
 
         if end_constraints is not None:
             batch_indices = torch.arange(batch_size, device=logits.device)
-            end_indices = mask.sum(dim=-1) - 1
             end_logits = logits[batch_indices, end_indices].masked_fill(
                 end_constraints, Semiring.zero
             )
@@ -290,5 +333,8 @@ class Crf(nn.Module):
         potentials = potentials * mask_expanded + mask_value * (~mask_expanded)
 
         return CrfDistribution(
-            start_potentials=logits[:, 0], potentials=potentials, mask=mask
+            start_potentials=logits[:, 0],
+            potentials=potentials,
+            mask=mask,
+            padding_index=self.__padding_index,
         )
