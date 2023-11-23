@@ -233,12 +233,28 @@ class CrfDistribution(BaseCrfDistribution):
 
 
 class Crf(nn.Module):
-    def __init__(self, num_tags: int) -> None:
+    def __init__(
+        self, num_tags: int, include_start: bool = False, include_end: bool = False
+    ) -> None:
         super().__init__()
 
         self.transitions = nn.Parameter(torch.empty(num_tags, num_tags))
-
         nn.init.xavier_normal_(self.transitions)
+
+        self.start_states: torch.Tensor | None
+        self.end_states: torch.Tensor | None
+
+        if include_start:
+            self.start_states = nn.Parameter(torch.empty(num_tags))
+            nn.init.normal_(self.start_states)
+        else:
+            self.start_states = None
+
+        if include_end:
+            self.end_states = nn.Parameter(torch.empty(num_tags))
+            nn.init.normal_(self.end_states)
+        else:
+            self.end_states = None
 
     def forward(
         self,
@@ -252,15 +268,30 @@ class Crf(nn.Module):
             mask = logits.new_ones(logits.shape[:-1], dtype=torch.bool)
 
         batch_size, sequence_length, num_tags = logits.size()
+        end_indices = mask.sum(dim=-1) - 1
+
+        if self.start_states is not None:
+            logits = logits.select_scatter(
+                src=logits[:, 0] + self.start_states, dim=1, index=0
+            )
+
+        if self.end_states is not None:
+            logits = logits.scatter_add(
+                dim=1,
+                index=end_indices[:, None, None].expand(-1, -1, num_tags),
+                src=self.end_states[:, None, :],
+            )
 
         # Apply constrains
         if start_constraints is not None:
-            start_logits = logits[:, 0].masked_fill(start_constraints, Semiring.zero)
-            logits = logits.select_scatter(src=start_logits, dim=1, index=0)
+            logits = logits.select_scatter(
+                src=logits[:, 0].masked_fill(start_constraints, Semiring.zero),
+                dim=1,
+                index=0,
+            )
 
         if end_constraints is not None:
             batch_indices = torch.arange(batch_size, device=logits.device)
-            end_indices = mask.sum(dim=-1) - 1
             end_logits = logits[batch_indices, end_indices].masked_fill(
                 end_constraints, Semiring.zero
             )
