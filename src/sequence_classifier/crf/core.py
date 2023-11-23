@@ -279,7 +279,7 @@ class Crf(nn.Module):
             logits = logits.scatter_add(
                 dim=1,
                 index=end_indices[:, None, None].expand(-1, -1, num_tags),
-                src=self.end_states[:, None, :],
+                src=self.end_states[None, None, :].expand(batch_size, -1, -1),
             )
 
         # Apply constrains
