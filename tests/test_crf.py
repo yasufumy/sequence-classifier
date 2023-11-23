@@ -1,3 +1,4 @@
+from functools import reduce
 from typing import cast
 
 import pytest
@@ -8,6 +9,7 @@ from sequence_label import LabelSet
 from torch.nn import functional as F
 from torch.testing import assert_allclose
 from torch_struct import LinearChainCRF
+from torchcrf import CRF
 
 from sequence_classifier.crf import BaseCrfDistribution, Crf
 
@@ -54,6 +56,52 @@ def test_crf_maches_torch_struct_results(
         - dist.log_partitions.value,
         expected.log_prob(expected.to_event(tag_indices, num_tags)),
     )
+
+
+@given(
+    batch_size=st.integers(min_value=1, max_value=5),
+    sequence_length=st.integers(min_value=1, max_value=15),
+    num_tags=st.integers(min_value=2, max_value=7),
+)
+def test_crf_maches_pytorch_crf_results(
+    batch_size: int, sequence_length: int, num_tags: int
+) -> None:
+    logits = torch.randn(batch_size, sequence_length, num_tags, requires_grad=True)
+    lengths = torch.arange(sequence_length, sequence_length - batch_size, -1)
+    lengths = torch.maximum(lengths, torch.full((batch_size,), 2))
+    mask = torch.arange(sequence_length) < lengths[..., None]
+    tag_indices = torch.randint(0, num_tags, (batch_size, sequence_length))
+
+    target = CRF(num_tags=num_tags, batch_first=True)
+
+    crf = Crf(num_tags=num_tags, include_start=True, include_end=True)
+    crf.transitions.data = target.transitions.data
+    cast(torch.Tensor, crf.start_states).data = target.start_transitions.data
+    cast(torch.Tensor, crf.end_states).data = target.end_transitions.data
+
+    dist = crf(logits=logits, mask=mask)
+
+    actual = dist.log_likelihood(tag_indices)
+    expected = target(emissions=logits, tags=tag_indices, mask=mask, reduction="none")
+
+    assert_allclose(actual, expected)
+
+    assert dist.argmax.masked_select(mask).tolist() == reduce(
+        lambda a, b: a + b, target.decode(emissions=logits, mask=mask)
+    )
+
+    # Check gradients
+    actual.sum().neg().backward()
+    expected.sum().neg().backward()
+
+    assert_allclose(
+        cast(torch.Tensor, crf.start_states).grad, target.start_transitions.grad
+    )
+    assert_allclose(
+        cast(torch.Tensor, crf.end_states).grad, target.end_transitions.grad
+    )
+    if target.transitions.grad is not None:
+        assert_allclose(crf.transitions.grad, target.transitions.grad)
 
 
 @given(
