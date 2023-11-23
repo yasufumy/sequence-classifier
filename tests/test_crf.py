@@ -22,7 +22,9 @@ def label_set() -> LabelSet:
     sequence_length=st.integers(min_value=2, max_value=15),
     num_tags=st.integers(min_value=2, max_value=7),
 )
-def test_crf(batch_size: int, sequence_length: int, num_tags: int) -> None:
+def test_crf_maches_torch_struct_results(
+    batch_size: int, sequence_length: int, num_tags: int
+) -> None:
     logits = torch.randn(batch_size, sequence_length, num_tags, requires_grad=True)
     lengths = torch.arange(sequence_length, sequence_length - batch_size, -1)
     lengths = torch.maximum(lengths, torch.full((batch_size,), 2))
