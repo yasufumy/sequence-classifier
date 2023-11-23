@@ -97,9 +97,7 @@ def test_crf_maches_pytorch_crf_results(
     assert_close(
         cast(torch.Tensor, crf.start_states).grad, target.start_transitions.grad
     )
-    assert_close(
-        cast(torch.Tensor, crf.end_states).grad, target.end_transitions.grad
-    )
+    assert_close(cast(torch.Tensor, crf.end_states).grad, target.end_transitions.grad)
     if target.transitions.grad is not None:
         assert_close(crf.transitions.grad, target.transitions.grad)
 
