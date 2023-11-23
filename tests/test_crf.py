@@ -33,7 +33,7 @@ def test_crf_maches_torch_struct_results(
     mask = torch.arange(sequence_length) < lengths[..., None]
     tag_indices = torch.randint(0, num_tags, (batch_size, sequence_length))
 
-    crf = Crf(num_tags=num_tags)
+    crf = Crf(num_tags=num_tags, padding_index=0)
 
     dist = cast(BaseCrfDistribution, crf(logits, mask))
 
@@ -43,7 +43,7 @@ def test_crf_maches_torch_struct_results(
 
     assert_allclose(dist.log_partitions.value, expected.partition)
     assert_allclose(dist.marginals, expected.marginals.transpose(3, 2))
-    assert_allclose(dist.argmax * mask, expected.from_event(expected.argmax)[0])
+    assert_allclose(dist.argmax, expected.from_event(expected.argmax)[0])
 
     # lengths don't take into account in a log_prob method
     dist2 = cast(BaseCrfDistribution, crf(logits))

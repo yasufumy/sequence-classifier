@@ -166,10 +166,12 @@ class CrfDistribution(BaseCrfDistribution):
         start_potentials: torch.Tensor,
         potentials: torch.Tensor,
         mask: torch.Tensor,
+        padding_index: int,
     ):
         self.__start_potentials = start_potentials
         self.__potentials = potentials
         self.__mask = mask
+        self.__padding_index = padding_index
 
     def log_scores(self, tag_indices: torch.Tensor) -> torch.Tensor:
         log_scores = self.__start_potentials.gather(
@@ -229,12 +231,20 @@ class CrfDistribution(BaseCrfDistribution):
 
         start = transition_sequence[:, 0].sum(dim=-1).argmax(dim=-1, keepdim=True)
 
-        return torch.cat([start, tag_indices], dim=-1)
+        return cast(
+            torch.Tensor,
+            torch.cat([start, tag_indices], dim=-1) * self.__mask
+            + (~self.__mask) * self.__padding_index,
+        )
 
 
 class Crf(nn.Module):
     def __init__(
-        self, num_tags: int, include_start: bool = False, include_end: bool = False
+        self,
+        num_tags: int,
+        include_start: bool = False,
+        include_end: bool = False,
+        padding_index: int = -1,
     ) -> None:
         super().__init__()
 
@@ -255,6 +265,8 @@ class Crf(nn.Module):
             nn.init.normal_(self.end_states)
         else:
             self.end_states = None
+
+        self.__padding_index = padding_index
 
     def forward(
         self,
@@ -321,5 +333,8 @@ class Crf(nn.Module):
         potentials = potentials * mask_expanded + mask_value * (~mask_expanded)
 
         return CrfDistribution(
-            start_potentials=logits[:, 0], potentials=potentials, mask=mask
+            start_potentials=logits[:, 0],
+            potentials=potentials,
+            mask=mask,
+            padding_index=self.__padding_index,
         )
