@@ -262,10 +262,16 @@ class CrfDistribution(BaseCrfDistribution):
 
     @property
     def argmax(self) -> torch.Tensor:
+        if not self.__potentials.requires_grad:
+            potentials = self.__potentials.requires_grad_()
+        else:
+            potentials = self.__potentials
+
+        with torch.enable_grad():
+            max_score = self.max.sum()
+
         (transition_sequence,) = torch.autograd.grad(
-            self.max.sum(),
-            self.__potentials,
-            create_graph=True,
+            max_score, potentials, create_graph=True
         )
         transition_sequence = transition_sequence.long()
 
