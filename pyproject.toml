@@ -97,6 +97,10 @@ ignore_missing_imports = true
 module = ["torch.testing.*"]
 no_implicit_reexport= false
 
+[[tool.mypy.overrides]]
+module = ["torch.enable_grad"]
+untyped_calls_exclude = true
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpath = ["tests"]
