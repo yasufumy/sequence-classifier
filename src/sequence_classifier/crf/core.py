@@ -89,6 +89,15 @@ class LogPartitions(BaseLogPartitions):
 class BaseCrfDistribution(metaclass=ABCMeta):
     @final
     def log_likelihood(self, tag_indices: torch.Tensor) -> torch.Tensor:
+        """Computes the log likelihood of tag sequences represented by given
+        tag indices in a CRF.
+
+        Args:
+            tag_indices: A [batch_size, sequence_length] integer tensor
+                where each item represents an active index.
+        Returns:
+            A [batch_size] float tensor representing the log likelihood.
+        """
         return cast(
             torch.Tensor,
             self.log_scores(tag_indices=tag_indices) - self.log_partitions.value,
@@ -96,6 +105,16 @@ class BaseCrfDistribution(metaclass=ABCMeta):
 
     @final
     def marginal_log_likelihood(self, tag_bitmap: torch.Tensor) -> torch.Tensor:
+        """Computes the marginal log likelihood of possible tag sequences matching given
+        tag bitmap in a CRF.
+
+        Args:
+            tag_bitmap: A [batch_size, sequence_length, num_tags] boolean tensor
+                where each item represents all active tags at each index.
+
+        Returns:
+            A [batch_size] float tensor representing the marginal log likelihood.
+        """
         return cast(
             torch.Tensor,
             self.log_multitag_scores(tag_bitmap=tag_bitmap) - self.log_partitions.value,
@@ -239,6 +258,20 @@ class CrfDistribution(BaseCrfDistribution):
 
 
 class Crf(nn.Module):
+    """A Conditional Random Field (CRF) layer.
+
+    Args:
+        num_tags: An integer representing the number of tags.
+        include_start: A boolean representing whether to include start boundary.
+        include_end: A boolean representing whether to include end boundary.
+        padding_index: An integer representing a dummy value to fill ragged tensors.
+
+    Attributes:
+        transitions: Transition parameter.
+        start_states: Start boundary parameter.
+        end_states: End boundary parameter.
+    """
+
     def __init__(
         self,
         num_tags: int,
@@ -276,6 +309,19 @@ class Crf(nn.Module):
         end_constraints: torch.Tensor | None = None,
         transition_constraints: torch.Tensor | None = None,
     ) -> BaseCrfDistribution:
+        """Computes a CRF distribution that allows you to calculates the log likelihood
+         or the best label sequence.
+
+        Args:
+            logits: A [batch_size, sequence_length, num_tags] float tensor.
+            mask: A [batch_size, sequence_length] boolean tensor.
+            start_constraints: A [num_tags] boolean tensor.
+            end_constraints: A [num_tags] boolean tensor.
+            transition_constraints: A [num_tags, num_tags] boolean tensor.
+
+        Returns:
+            An instance of BaseCrfDistribution.
+        """
         if mask is None:
             mask = logits.new_ones(logits.shape[:-1], dtype=torch.bool)
 
