@@ -88,24 +88,19 @@ class LogPartitions(BaseLogPartitions):
 
 class BaseCrfDistribution(metaclass=ABCMeta):
     @final
-    def log_likelihood(
-        self, tag_indices: torch.Tensor, ignore_index: int | None = None
-    ) -> torch.Tensor:
+    def log_likelihood(self, tag_indices: torch.Tensor) -> torch.Tensor:
         """Computes the log likelihood of tag sequences represented by given
         tag indices in a CRF.
 
         Args:
             tag_indices: A [batch_size, sequence_length] integer tensor
                 where each item represents an active index.
-            ignore_index: An integer representing a value that is ignored and
-                does not contribute to the input gradient.
         Returns:
             A [batch_size] float tensor representing the log likelihood.
         """
         return cast(
             torch.Tensor,
-            self.log_scores(tag_indices=tag_indices, ignore_index=ignore_index)
-            - self.log_partitions.value,
+            self.log_scores(tag_indices=tag_indices) - self.log_partitions.value,
         )
 
     @final
@@ -130,9 +125,7 @@ class BaseCrfDistribution(metaclass=ABCMeta):
         return self.log_partitions.marginals
 
     @abstractmethod
-    def log_scores(
-        self, tag_indices: torch.Tensor, ignore_index: int | None = None
-    ) -> torch.Tensor:
+    def log_scores(self, tag_indices: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError()
 
     @abstractmethod
@@ -159,19 +152,12 @@ class CrfUnitDistribution(BaseCrfDistribution):
     def __init__(self, logits: torch.Tensor):
         self.__logits = logits
 
-    def log_scores(
-        self, tag_indices: torch.Tensor, ignore_index: int | None = None
-    ) -> torch.Tensor:
-        if ignore_index is not None:
-            valid = cast(torch.Tensor, tag_indices != ignore_index)
-            tag_indices = tag_indices * valid
-            logits = self.__logits * valid
-        else:
-            logits = self.__logits
-
+    def log_scores(self, tag_indices: torch.Tensor) -> torch.Tensor:
         return cast(
             torch.Tensor,
-            logits.squeeze(dim=1).gather(dim=-1, index=tag_indices).squeeze(dim=-1),
+            self.__logits.squeeze(dim=1)
+            .gather(dim=-1, index=tag_indices)
+            .squeeze(dim=-1),
         )
 
     def log_multitag_scores(self, tag_bitmap: torch.Tensor) -> torch.Tensor:
@@ -206,28 +192,24 @@ class CrfDistribution(BaseCrfDistribution):
         self.__mask = mask
         self.__padding_index = padding_index
 
-    def log_scores(
-        self, tag_indices: torch.Tensor, ignore_index: int | None = None
-    ) -> torch.Tensor:
-        if ignore_index is not None:
-            valid = cast(torch.Tensor, tag_indices != ignore_index)
+    def log_scores(self, tag_indices: torch.Tensor) -> torch.Tensor:
+        valid_tag_indices = tag_indices * self.__mask
 
-            tag_indices = tag_indices * valid
-            start_potentials = self.__start_potentials * valid[:, [0]]
-            potentials = self.__potentials * valid[:, 1:, None, None]
-        else:
-            start_potentials = self.__start_potentials
-            potentials = self.__potentials
-
-        log_scores = start_potentials.gather(index=tag_indices[:, [0]], dim=-1).squeeze(
-            dim=-1
+        log_scores = (
+            self.__start_potentials.gather(
+                index=valid_tag_indices[:, [0]], dim=-1
+            ).squeeze(dim=-1)
+            * self.__mask[:, [0]]
         )
         log_scores += (
-            potentials.take_along_dim(indices=tag_indices[:, 1:, None, None], dim=-1)
-            .take_along_dim(indices=tag_indices[:, :-1, None, None], dim=-2)
+            self.__potentials.take_along_dim(
+                indices=valid_tag_indices[:, 1:, None, None], dim=-1
+            )
+            .take_along_dim(indices=valid_tag_indices[:, :-1, None, None], dim=-2)
             .squeeze(dim=(-1, -2))
             * self.__mask[:, 1:]
         ).sum(dim=-1)
+
         return cast(torch.Tensor, log_scores)
 
     def log_multitag_scores(self, tag_bitmap: torch.Tensor) -> torch.Tensor:
