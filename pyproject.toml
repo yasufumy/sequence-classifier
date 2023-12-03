@@ -97,16 +97,21 @@ pretty = true
 module = [
     "torch_struct.*",
     "torchcrf.*",
+    "transformers.*",
+    "datasets.*",
+    "evaluate.*",
 ]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["torch.testing.*"]
-no_implicit_reexport= false
+no_implicit_reexport = false
 
 [[tool.mypy.overrides]]
-module = ["torch.enable_grad"]
-untyped_calls_exclude = true
+module = [
+    "sequence_classifier.crf.core",
+]
+allow_untyped_calls = true
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
