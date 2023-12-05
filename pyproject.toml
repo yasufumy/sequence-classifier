@@ -89,7 +89,11 @@ ban-relative-imports = "all"
 strict = true
 
 [tool.mypy]
-files = ["src", "tests"]
+files = [
+    "src",
+    "tests",
+    "examples",
+]
 strict = true
 pretty = true
 
