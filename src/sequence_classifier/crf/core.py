@@ -199,7 +199,7 @@ class CrfDistribution(BaseCrfDistribution):
             self.__start_potentials.gather(
                 index=valid_tag_indices[:, [0]], dim=-1
             ).squeeze(dim=-1)
-            * self.__mask[:, [0]]
+            * self.__mask[:, 0]
         )
         log_scores += (
             self.__potentials.take_along_dim(
