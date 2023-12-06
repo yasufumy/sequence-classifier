@@ -111,17 +111,16 @@ class HuggingFaceRepository:
     def load_classifier(
         self, classifier_type: ClassifierType, **model_args: Any
     ) -> AutoModelForTokenClassification | SequenceClassifier:
-        match classifier_type:
-            case "token":
-                return AutoModelForTokenClassification.from_pretrained(
-                    self.model_name, **model_args
-                )
-            case "sequence":
-                return SequenceClassifier.from_pretrained(self.model_name, **model_args)
-            case _:
-                raise ValueError(
-                    f"An invalid classifier type is specified: {classifier_type}"
-                )
+        if classifier_type == "token":
+            return AutoModelForTokenClassification.from_pretrained(
+                self.model_name, **model_args
+            )
+        elif classifier_type == "sequence":
+            return SequenceClassifier.from_pretrained(self.model_name, **model_args)
+        else:
+            raise ValueError(
+                f"An invalid classifier type is specified: {classifier_type}"
+            )
 
 
 @dataclass(frozen=True)
