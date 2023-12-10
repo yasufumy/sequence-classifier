@@ -20,7 +20,14 @@ classifiers = [
 dynamic = ["version"]
 
 [project.optional-dependencies]
+example = [
+    "transformers[torch]>=4.35.2",
+    "datasets>=2.15.0",
+    "evaluate>=0.4.1",
+    "seqeval>=1.2.2",
+]
 ci = [
+    "sequence-classifier[example]",
     "pytest>=7.4.3",
     "pytest-cov>=4.1.0",
     "mypy>=1.7.0",
@@ -36,6 +43,7 @@ dev = [
     "pdbpp>=0.10.3",
     "ipython>=8.12.3",
 ]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -82,7 +90,11 @@ ban-relative-imports = "all"
 strict = true
 
 [tool.mypy]
-files = ["src", "tests"]
+files = [
+    "src",
+    "tests",
+    "examples",
+]
 strict = true
 pretty = true
 
@@ -90,12 +102,21 @@ pretty = true
 module = [
     "torch_struct.*",
     "torchcrf.*",
+    "transformers.*",
+    "datasets.*",
+    "evaluate.*",
 ]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["torch.testing.*"]
-no_implicit_reexport= false
+no_implicit_reexport = false
+
+[[tool.mypy.overrides]]
+module = [
+    "sequence_classifier.crf.core",
+]
+allow_untyped_calls = true
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

@@ -193,17 +193,23 @@ class CrfDistribution(BaseCrfDistribution):
         self.__padding_index = padding_index
 
     def log_scores(self, tag_indices: torch.Tensor) -> torch.Tensor:
-        log_scores = self.__start_potentials.gather(
-            index=tag_indices[:, [0]], dim=-1
-        ).squeeze(dim=-1)
+        valid_tag_indices = tag_indices * self.__mask
+
+        log_scores = (
+            self.__start_potentials.gather(
+                index=valid_tag_indices[:, [0]], dim=-1
+            ).squeeze(dim=-1)
+            * self.__mask[:, 0]
+        )
         log_scores += (
             self.__potentials.take_along_dim(
-                indices=tag_indices[:, 1:, None, None], dim=-1
+                indices=valid_tag_indices[:, 1:, None, None], dim=-1
             )
-            .take_along_dim(indices=tag_indices[:, :-1, None, None], dim=-2)
+            .take_along_dim(indices=valid_tag_indices[:, :-1, None, None], dim=-2)
             .squeeze(dim=(-1, -2))
             * self.__mask[:, 1:]
         ).sum(dim=-1)
+
         return cast(torch.Tensor, log_scores)
 
     def log_multitag_scores(self, tag_bitmap: torch.Tensor) -> torch.Tensor:
@@ -238,10 +244,16 @@ class CrfDistribution(BaseCrfDistribution):
 
     @property
     def argmax(self) -> torch.Tensor:
+        if not self.__potentials.requires_grad:
+            potentials = self.__potentials.requires_grad_()
+        else:
+            potentials = self.__potentials
+
+        with torch.enable_grad():
+            max_score = self.max.sum()
+
         (transition_sequence,) = torch.autograd.grad(
-            self.max.sum(),
-            self.__potentials,
-            create_graph=True,
+            max_score, potentials, create_graph=True
         )
         transition_sequence = transition_sequence.long()
 
