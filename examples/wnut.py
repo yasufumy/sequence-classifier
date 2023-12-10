@@ -7,7 +7,7 @@ import json
 import os
 from dataclasses import dataclass, replace
 from multiprocessing import Process, Queue
-from typing import TYPE_CHECKING, Any, Callable, Final, Literal, cast
+from typing import TYPE_CHECKING, Any, Callable, Final, Literal, NewType, cast
 
 import evaluate
 import numpy as np
@@ -42,6 +42,11 @@ if TYPE_CHECKING:
 IGNORE_INDEX: Final[int] = -100
 
 
+PreTrainedModelForTokenClassification = NewType(  # type:ignore
+    "PreTrainedModelForTokenClassification", PreTrainedModel
+)
+
+
 class SequenceClassifier(PreTrainedModel):  # type:ignore
     config_class = AutoConfig
     base_model_prefix = "foundation_model"
@@ -70,6 +75,7 @@ class SequenceClassifier(PreTrainedModel):  # type:ignore
         output_attentions: bool | None = None,
         output_hidden_states: bool | None = None,
         return_dict: bool | None = None,
+        word_mask: torch.BoolTensor | None = None,
     ) -> TokenClassifierOutput:
         outputs = self.foundation_model(
             input_ids=input_ids,
@@ -84,7 +90,17 @@ class SequenceClassifier(PreTrainedModel):  # type:ignore
             return_dict=return_dict,
         )
 
-        mask = cast(torch.BoolTensor, labels != IGNORE_INDEX)
+        if word_mask is not None:
+            mask = word_mask
+        elif labels is not None:
+            mask = cast(torch.BoolTensor, labels != IGNORE_INDEX)
+        elif attention_mask is not None:
+            mask = cast(torch.BoolTensor, attention_mask.bool())
+        else:
+            logits = outputs.logits
+            mask = torch.ones(
+                logits.size()[:-1], device=logits.device, dtype=logits.dtype
+            )
 
         dist = self.crf(logits=outputs.logits, mask=mask)
 
@@ -110,13 +126,18 @@ class HuggingFaceRepository:
 
     def load_classifier(
         self, classifier_type: ClassifierType, **model_args: Any
-    ) -> AutoModelForTokenClassification | SequenceClassifier:
+    ) -> PreTrainedModelForTokenClassification | SequenceClassifier:
         if classifier_type == "token":
-            return AutoModelForTokenClassification.from_pretrained(
-                self.model_name, **model_args
+            return PreTrainedModelForTokenClassification(
+                AutoModelForTokenClassification.from_pretrained(
+                    self.model_name, **model_args
+                )
             )
         elif classifier_type == "sequence":
-            return SequenceClassifier.from_pretrained(self.model_name, **model_args)
+            return cast(
+                SequenceClassifier,
+                SequenceClassifier.from_pretrained(self.model_name, **model_args),
+            )
         else:
             raise ValueError(
                 f"An invalid classifier type is specified: {classifier_type}"
