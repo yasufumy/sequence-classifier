@@ -29,6 +29,8 @@ from transformers import (
 from sequence_classifier.crf import Crf
 
 if TYPE_CHECKING:
+    from collections.abc import Collection, Mapping
+
     from datasets.formatting.formatting import LazyBatch
     from transformers import (
         BatchEncoding,
@@ -147,7 +149,7 @@ class HuggingFaceRepository:
 @dataclass(frozen=True)
 class TrainingJob:
     hf_repo: HuggingFaceRepository
-    tokenizer_args: dict[str, Any]
+    tokenizer_args: Mapping[str, Any]
     classifier_type: ClassifierType
     output_directory: str
     metric_file: str = "metrics.json"
@@ -290,8 +292,8 @@ def execute(job: TrainingJob, available_devices: Queue[int]) -> None:
 
 @dataclass(frozen=True)
 class JobRunner:
-    devices: tuple[int, ...]
-    jobs: tuple[TrainingJob, ...]
+    devices: Collection[int]
+    jobs: Collection[TrainingJob]
 
     def __call__(self) -> None:
         available_devices: Queue[int] = Queue()
@@ -325,5 +327,5 @@ if __name__ == "__main__":
             )
         )
 
-    runner = JobRunner(devices=(0,), jobs=tuple(jobs))
+    runner = JobRunner(devices=[0], jobs=jobs)
     runner()
