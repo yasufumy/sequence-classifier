@@ -29,7 +29,7 @@ from transformers import (
 from sequence_classifier.crf import Crf
 
 if TYPE_CHECKING:
-    from collections.abc import Collection, Mapping
+    from collections.abc import Iterable, Mapping
 
     from datasets.formatting.formatting import LazyBatch
     from transformers import (
@@ -292,8 +292,8 @@ def execute(job: TrainingJob, available_devices: Queue[int]) -> None:
 
 @dataclass(frozen=True)
 class JobRunner:
-    devices: Collection[int]
-    jobs: Collection[TrainingJob]
+    devices: Iterable[int]
+    jobs: Iterable[TrainingJob]
 
     def __call__(self) -> None:
         available_devices: Queue[int] = Queue()
